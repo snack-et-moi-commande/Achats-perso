@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Achats perso">
+<meta name="theme-color" content="#2f6f4f">
+<title>Achats perso</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{--vert:#2f6f4f;--vert2:#e7f2ec;--txt:#1d2421;--gris:#6b7570;--bord:#dfe5e2;--fond:#f6f8f7;--rouge:#c0392b;--rouge2:#fbeaea;--blanc:#fff;--entete:#2f6f4f;--survert:#fff;--toast:#222}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--vert:#6fbf94;--vert2:#1f3a2c;--txt:#e6ece9;--gris:#9aa5a0;--bord:#2e3833;--fond:#121614;--rouge:#e8796c;--rouge2:#3a2220;--blanc:#1b211e;--entete:#1f4a35;--survert:#0e1a14;--toast:#e6ece9;color-scheme:dark}}
+:root[data-theme="dark"]{--vert:#6fbf94;--vert2:#1f3a2c;--txt:#e6ece9;--gris:#9aa5a0;--bord:#2e3833;--fond:#121614;--rouge:#e8796c;--rouge2:#3a2220;--blanc:#1b211e;--entete:#1f4a35;--survert:#0e1a14;--toast:#e6ece9;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--fond);color:var(--txt);font-size:16px;padding-bottom:80px}
+header{background:var(--entete);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:baseline}
+header h1{font-size:19px;margin:0}
+header .ver{font-size:12px;opacity:.85}
+main{padding:12px 16px}
+.page{display:none}.page.on{display:block}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--blanc);border-top:1px solid var(--bord);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:10}
+nav button{flex:1;border:0;background:none;padding:9px 0 8px;font-size:12px;color:var(--gris);display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button span{font-size:21px}
+nav button.on{color:var(--vert);font-weight:600}
+.carte{background:var(--blanc);border:1px solid var(--bord);border-radius:12px;padding:12px;margin-bottom:12px}
+h2{font-size:17px;margin:4px 0 10px}
+label{font-size:13px;color:var(--gris);display:block;margin:8px 0 4px}
+input,select{width:100%;font-size:16px;padding:10px;border:1px solid var(--bord);border-radius:8px;background:var(--blanc);color:var(--txt)}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:12px;font-size:16px;font-weight:600;background:var(--vert);color:var(--survert);margin-top:10px}
+.btn.sec{background:var(--vert2);color:var(--vert)}
+.btn.dang{background:var(--rouge2);color:var(--rouge)}
+.btn.scan{font-size:17px;padding:14px}
+.ligne{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--bord);gap:8px}
+.ligne:last-child{border-bottom:0}
+.ligne .n{flex:1;min-width:0}
+.ligne .n b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.ligne small{color:var(--gris);font-size:13px}
+.prix{font-weight:600;white-space:nowrap;text-align:right}
+.prix small{display:block;font-weight:400}
+.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--vert2);color:var(--vert);margin-left:4px}
+.x{border:0;background:none;color:var(--rouge);font-size:20px;padding:4px 8px}
+.row{display:flex;gap:8px;align-items:flex-end}.row>*{flex:1;min-width:0}
+.row .petit{flex:0 0 auto}
+.icone{border:1px solid var(--vert);background:var(--vert2);color:var(--vert);border-radius:8px;padding:9px 12px;font-size:18px}
+.seg{display:flex;border:1px solid var(--vert);border-radius:8px;overflow:hidden}
+.seg button{flex:1;border:0;padding:10px;background:var(--blanc);color:var(--vert);font-size:15px}
+.seg button.on{background:var(--vert);color:var(--survert)}
+.total{font-size:22px;font-weight:700;color:var(--vert);text-align:right}
+.vide{color:var(--gris);text-align:center;padding:16px;font-size:14px}
+.aide{color:var(--gris);font-size:13px;display:block;margin-top:4px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;z-index:20}
+.modal.on{display:flex}
+.modal .box{background:var(--blanc);width:100%;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
+.res{max-height:260px;overflow:auto}
+.calc{background:var(--vert2);border-radius:8px;padding:10px;margin-top:10px}
+.calc div{display:flex;justify-content:space-between;gap:8px}
+.calc .fort{font-weight:700;font-size:17px;margin-top:4px}
+.calc small{color:var(--gris)}
+#lecteur{width:100%;border-radius:10px;overflow:hidden;background:#000;min-height:60px}
+#scan-msg{color:var(--rouge);font-size:14px;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--toast);color:var(--fond);padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:40;max-width:90%;text-align:center}
+.paye{color:var(--vert);font-weight:600}.nonpaye{color:var(--rouge);font-weight:600}
+.tab{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:6px 4px;border-bottom:1px solid var(--bord);text-align:left}
+td.r,th.r{text-align:right;white-space:nowrap}
+</style>
+</head>
+<body>
+<header><h1>🛒 Achats perso</h1><span class="ver" id="ver"></span></header>
+
+<main>
+<!-- SAISIE -->
+<section class="page on" id="p-saisie">
+  <div class="carte">
+    <label for="s-date">Date de l'achat</label>
+    <input type="date" id="s-date">
+    <button class="btn scan" onclick="scanOuvrir(scanSaisie)">▥ Scanner un code-barre</button>
+    <label for="s-cherche">ou rechercher (nom, référence, code-barre)</label>
+    <input type="search" id="s-cherche" placeholder="Rechercher un article…" autocomplete="off">
+    <div class="res" id="s-res"></div>
+  </div>
+  <div class="carte">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="s-titre">Achats du mois</h2><span class="prix" id="s-totmois"></span></div>
+    <div id="s-liste"></div>
+  </div>
+</section>
+
+<!-- ARTICLES -->
+<section class="page" id="p-articles">
+  <button class="btn" onclick="ouvrirArticle()">＋ Nouvel article</button>
+  <div class="carte" style="margin-top:12px">
+    <div class="row"><input type="search" id="a-cherche" placeholder="Rechercher…" autocomplete="off"><button class="icone petit" onclick="scanOuvrir(c=>{document.getElementById('a-cherche').value=c;rendreArticles();})" aria-label="Scanner">▥</button></div>
+    <div id="a-liste" style="margin-top:6px"></div>
+  </div>
+</section>
+
+<!-- RECAP -->
+<section class="page" id="p-recap">
+  <div class="carte">
+    <label for="r-mois">Mois</label>
+    <input type="month" id="r-mois">
+    <div id="r-contenu" style="margin-top:12px"></div>
+  </div>
+</section>
+
+<!-- REGLAGES -->
+<section class="page" id="p-reglages">
+  <div class="carte">
+    <h2>Importer l'export de la caisse</h2>
+    <small class="aide">Fichier EXPORT_PRODUITS.DAT de la caisse, Excel (.xlsx, .xls) ou .csv. Colonnes reconnues : Désignation, Référence, Prix public, Code-barre (EAN), TVA, et Unité/kg si elle existe. Un article déjà connu (même code-barre, sinon même référence ou même nom) est mis à jour au lieu d'être recréé.</small>
+    <input type="file" id="f-import" accept=".xlsx,.xls,.csv,.dat,.txt" style="margin-top:10px">
+  </div>
+  <div class="carte">
+    <h2>Calcul du prix d'achat</h2>
+    <small class="aide">Prix d'achat = prix public ÷ coefficient, puis on ajoute la TVA de l'article.</small>
+    <label for="g-coef">Coefficient</label>
+    <input type="number" id="g-coef" inputmode="decimal" step="0.01" min="1">
+    <small class="aide" id="g-exemple"></small>
+  </div>
+  <div class="carte">
+    <h2>Nom affiché sur le récap</h2>
+    <input type="text" id="g-nom" placeholder="ex. Marie">
+  </div>
+  <div class="carte">
+    <h2>Sauvegarde</h2>
+    <small class="aide">Les données restent sur ce téléphone. Fais une sauvegarde de temps en temps (et avant de changer de téléphone).</small>
+    <button class="btn sec" onclick="sauvegarder()">⬇︎ Exporter une sauvegarde</button>
+    <label for="f-restaure">Restaurer une sauvegarde (.json)</label>
+    <input type="file" id="f-restaure" accept=".json,application/json">
+  </div>
+  <div class="carte">
+    <h2>Effacer toutes les données</h2>
+    <small class="aide">Supprime articles, achats et règlements de ce téléphone. Exporte une sauvegarde avant si besoin.</small>
+    <button class="btn dang" onclick="toutEffacer()">Tout effacer</button>
+  </div>
+  <div class="carte"><small class="aide">Version <b id="ver2"></b></small></div>
+</section>
+</main>
+
+<nav>
+  <button class="on" data-p="saisie"><span>✏️</span>Saisie</button>
+  <button data-p="articles"><span>📋</span>Articles</button>
+  <button data-p="recap"><span>📅</span>Récap</button>
+  <button data-p="reglages"><span>⚙️</span>Réglages</button>
+</nav>
+
+<!-- Modale quantité -->
+<div class="modal" id="m-qte"><div class="box">
+  <h2 id="q-nom"></h2>
+  <small class="aide" id="q-info"></small>
+  <label for="q-val" id="q-label"></label>
+  <input type="number" id="q-val" inputmode="decimal" min="0" step="any">
+  <label for="q-pp" id="q-plabel">Prix public</label>
+  <input type="number" id="q-pp" inputmode="decimal" min="0" step="0.01">
+  <small class="aide">Si le prix public a changé, corrige-le ici : l'article est mis à jour pour les prochains achats.</small>
+  <div class="calc">
+    <div><small id="q-detail"></small><span id="q-pa"></span></div>
+    <div class="fort"><span>Montant</span><span id="q-mont">0,00 €</span></div>
+  </div>
+  <button class="btn" onclick="validerAchat()">Ajouter l'achat</button>
+  <button class="btn sec" onclick="fermer('m-qte')">Annuler</button>
+</div></div>
+
+<!-- Modale article -->
+<div class="modal" id="m-art"><div class="box">
+  <h2 id="art-titre">Article</h2>
+  <label for="art-nom">Désignation</label>
+  <input type="text" id="art-nom">
+  <div class="row">
+    <div><label for="art-ref">Référence</label><input type="text" id="art-ref"></div>
+  </div>
+  <label for="art-ean">Code-barre</label>
+  <div class="row"><input type="text" id="art-ean" inputmode="numeric"><button class="icone petit" onclick="scanOuvrir(c=>{document.getElementById('art-ean').value=c;})" aria-label="Scanner">▥</button></div>
+  <label>Vendu</label>
+  <div class="seg"><button id="art-u" onclick="setMode('u')">à l'unité</button><button id="art-kg" onclick="setMode('kg')">au kilo</button></div>
+  <div class="row">
+    <div><label for="art-pp" id="art-plabel">Prix public</label><input type="number" id="art-pp" inputmode="decimal" min="0" step="0.01"></div>
+    <div><label for="art-tva">TVA</label><select id="art-tva"><option value="5.5">5,5 %</option><option value="20">20 %</option><option value="10">10 %</option><option value="2.1">2,1 %</option></select></div>
+  </div>
+  <div class="calc"><div><small id="art-detail"></small><b id="art-pa"></b></div></div>
+  <div id="art-hist" style="margin-top:8px"></div>
+  <button class="btn" onclick="enregArticle()">Enregistrer</button>
+  <button class="btn dang" id="art-suppr" onclick="supprArticle()">Supprimer l'article</button>
+  <button class="btn sec" onclick="fermer('m-art')">Annuler</button>
+</div></div>
+
+<!-- Modale import -->
+<div class="modal" id="m-imp"><div class="box">
+  <h2>Aperçu de l'import</h2>
+  <small class="aide" id="imp-info"></small>
+  <div class="row" style="margin-top:8px"><button class="btn sec" style="margin:0" onclick="impTous('u')">Tout à l'unité</button><button class="btn sec" style="margin:0" onclick="impTous('kg')">Tout au kilo</button></div>
+  <div id="imp-liste" style="margin-top:8px"></div>
+  <button class="btn" onclick="validerImport()">Importer</button>
+  <button class="btn sec" onclick="fermer('m-imp')">Annuler</button>
+</div></div>
+
+<!-- Modale scanner -->
+<div class="modal" id="m-scan"><div class="box">
+  <h2>Scanner le code-barre</h2>
+  <div id="lecteur"></div>
+  <div id="scan-msg"></div>
+  <label class="btn sec" style="text-align:center;cursor:pointer">📷 Photo du code-barre<input type="file" id="scan-photo" accept="image/*" capture="environment" hidden></label>
+  <label for="scan-main">ou taper le code</label>
+  <div class="row"><input type="text" id="scan-main" inputmode="numeric" autocomplete="off"><button class="icone petit" onclick="scanManuel()">OK</button></div>
+  <div id="lecteur-photo" hidden></div>
+  <button class="btn sec" onclick="scanFermer()">Fermer</button>
+</div></div>
+
+<!-- Modale confirmation -->
+<div class="modal" id="m-conf"><div class="box">
+  <h2 id="conf-txt"></h2>
+  <button class="btn dang" id="conf-oui">Confirmer</button>
+  <button class="btn sec" id="conf-non">Annuler</button>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const VERSION = "v2026-11-12-5";
+const CLE = "achatsPerso_v1";
+document.getElementById("ver").textContent = VERSION;
+document.getElementById("ver2").textContent = VERSION;
+
+/* ---------- Outils ---------- */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const r2 = n => Math.round(n*100)/100;
+const eur = n => r2(n).toLocaleString("fr-FR",{style:"currency",currency:"EUR"});
+const pct = t => String(t).replace(".",",")+" %";
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s??"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+const eanNorm = s => (typeof s==="number" ? s.toFixed(0) : String(s??"")).replace(/\D/g,"").replace(/^0+/,"");
+const auj = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+const moisDe = d => d.slice(0,7);
+const dateFr = (d,o) => new Date(d+"T12:00:00").toLocaleDateString("fr-FR",o);
+const nomMois = m => { const [a,mo]=m.split("-"); return new Date(+a,+mo-1,1).toLocaleDateString("fr-FR",{month:"long",year:"numeric"}); };
+function parsePrix(v){ if(typeof v==="number") return v; const n=parseFloat(String(v??"").replace(/\s/g,"").replace(/[^\d,.\-]/g,"").replace(",",".")); return isNaN(n)?null:n; }
+function parseTva(v){ let t=parsePrix(v); if(t===null) return null; if(t>0&&t<1) t*=100; return Math.round(t*10)/10; }
+function toast(t){ const e=document.getElementById("toast"); e.textContent=t; e.style.display="block"; clearTimeout(e._t); e._t=setTimeout(()=>e.style.display="none",2400); }
+function ouvrir(id){ document.getElementById(id).classList.add("on"); }
+function fermer(id){ document.getElementById(id).classList.remove("on"); }
+document.querySelectorAll(".modal").forEach(m=>m.addEventListener("click",e=>{ if(e.target===m){ if(m.id==="m-scan") scanFermer(); else m.classList.remove("on"); } }));
+function demander(msg,oui){ return new Promise(res=>{ document.getElementById("conf-txt").textContent=msg; const bo=document.getElementById("conf-oui"); bo.textContent=oui||"Confirmer";
+  const fin=v=>{ fermer("m-conf"); bo.onclick=null; document.getElementById("conf-non").onclick=null; res(v); };
+  bo.onclick=()=>fin(true); document.getElementById("conf-non").onclick=()=>fin(false); ouvrir("m-conf"); }); }
+
+/* ---------- Données ---------- */
+let D = { articles:[], achats:[], paiements:{}, nom:"", coef:1.6 };
+try { const s = localStorage.getItem(CLE); if (s) D = Object.assign(D, JSON.parse(s)); } catch(e) {}
+function save(){ try { localStorage.setItem(CLE, JSON.stringify(D)); } catch(e){ toast("Erreur d'enregistrement"); } }
+const coef = () => (D.coef>0 ? D.coef : 1.6);
+const prixAchat = (pp,tva) => r2(pp/coef()*(1+tva/100));
+const unite = a => a.mode==="kg" ? "/ kg" : "/ unité";
+// Reprise des articles des versions précédentes (prix direct, sans prix public)
+D.articles.forEach(a=>{
+  if(a.pp==null){ a.tva=a.tva??5.5; a.pp=r2((a.prix||0)*coef()/(1+a.tva/100)); }
+  a.ref=a.ref||""; a.ean=a.ean||""; a.tva=a.tva??5.5; a.prix=prixAchat(a.pp,a.tva);
+});
+save();
+
+/* ---------- Navigation ---------- */
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+b.dataset.p));
+  rendre(); window.scrollTo(0,0);
+});
+
+/* ---------- Recherche ---------- */
+function trouverParCode(code){ const c=eanNorm(code); if(!c) return null;
+  return D.articles.find(a=>a.ean&&eanNorm(a.ean)===c) || D.articles.find(a=>a.ref&&norm(a.ref)===norm(code)) || null; }
+function correspond(a,q){ return norm(a.nom).includes(q) || (a.ref&&norm(a.ref).includes(q)) || (a.ean&&String(a.ean).includes(q)); }
+
+/* ---------- Saisie ---------- */
+const sDate=document.getElementById("s-date"), sCh=document.getElementById("s-cherche");
+sDate.value = auj();
+sDate.onchange = rendreSaisie;
+sCh.oninput = rendreRecherche;
+sCh.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); const a=trouverParCode(sCh.value); if(a) choisir(a.id); else { const q=norm(sCh.value); const l=D.articles.filter(x=>correspond(x,q)); if(l.length===1) choisir(l[0].id); } } });
+function rendreRecherche(){
+  const q=norm(sCh.value), el=document.getElementById("s-res");
+  if(!q){ el.innerHTML=""; return; }
+  const r=D.articles.filter(a=>correspond(a,q)).sort((a,b)=>a.nom.localeCompare(b.nom,"fr")).slice(0,30);
+  el.innerHTML = r.map(a=>`<div class="ligne" onclick="choisir('${a.id}')"><div class="n"><b>${esc(a.nom)}</b><small>${a.ref?"Réf "+esc(a.ref)+" · ":""}achat ${eur(a.prix)} ${unite(a)}</small></div><span style="color:var(--vert);font-size:22px">＋</span></div>`).join("")
+    + `<div class="ligne" onclick="ouvrirArticle(null,{nom:sCh.value})"><div class="n"><b style="color:var(--vert)">＋ Créer « ${esc(sCh.value)} »</b></div></div>`;
+}
+function scanSaisie(code){
+  const a=trouverParCode(code);
+  if(a) choisir(a.id);
+  else { toast("Code-barre inconnu : crée l'article"); ouvrirArticle(null,{ean:code}); }
+}
+let artChoisi=null;
+function choisir(id){
+  artChoisi=D.articles.find(a=>a.id===id); if(!artChoisi) return;
+  const a=artChoisi;
+  document.getElementById("q-nom").textContent=a.nom;
+  document.getElementById("q-info").textContent=[a.ref?"Réf "+a.ref:"",a.ean?"EAN "+a.ean:"","TVA "+pct(a.tva)].filter(Boolean).join(" · ");
+  document.getElementById("q-label").textContent= a.mode==="kg" ? "Poids en grammes" : "Quantité (unités)";
+  document.getElementById("q-plabel").textContent= a.mode==="kg" ? "Prix public au kilo (€)" : "Prix public à l'unité (€)";
+  document.getElementById("q-pp").value=a.pp;
+  const v=document.getElementById("q-val"); v.value = a.mode==="kg" ? "" : "1"; majMontant();
+  ouvrir("m-qte"); setTimeout(()=>{v.focus(); v.select();},150);
+}
+document.getElementById("q-val").oninput=majMontant; document.getElementById("q-pp").oninput=majMontant;
+function ppSaisi(){ const p=parsePrix(document.getElementById("q-pp").value); return p===null?artChoisi.pp:p; }
+const montantDe = (mode,q,pa) => mode==="kg" ? pa*q/1000 : pa*q;
+function majMontant(){
+  if(!artChoisi) return;
+  const q=parseFloat(String(document.getElementById("q-val").value).replace(",","."))||0, pp=ppSaisi(), pa=prixAchat(pp,artChoisi.tva);
+  document.getElementById("q-detail").textContent=`Prix d'achat (${eur(pp)} ÷ ${String(coef()).replace(".",",")} + TVA ${pct(artChoisi.tva)})`;
+  document.getElementById("q-pa").textContent=eur(pa)+" "+unite(artChoisi);
+  document.getElementById("q-mont").textContent=eur(montantDe(artChoisi.mode,q,pa));
+}
+function majPrixArticle(a,pp){ if(pp===a.pp) return false; a.pp=pp; a.prix=prixAchat(pp,a.tva); a.hist=a.hist||[]; a.hist.push({date:auj(),pp,prix:a.prix}); return true; }
+function validerAchat(){
+  const q=parseFloat(String(document.getElementById("q-val").value).replace(",","."));
+  if(!q||q<=0){ toast("Indique une quantité"); return; }
+  const a=artChoisi, pp=ppSaisi();
+  if(pp<0){ toast("Prix invalide"); return; }
+  const maj=majPrixArticle(a,pp), pa=prixAchat(pp,a.tva);
+  D.achats.push({ id:uid(), date:sDate.value||auj(), artId:a.id, nom:a.nom, ref:a.ref, mode:a.mode, qte:q, pp, tva:a.tva, prix:pa, montant:r2(montantDe(a.mode,q,pa)) });
+  save(); fermer("m-qte"); sCh.value=""; rendreRecherche(); rendre(); toast(maj?"Achat ajouté, prix mis à jour":"Achat ajouté");
+}
+function qteTxt(x){ return x.mode==="kg" ? (x.qte>=1000 ? (x.qte/1000).toLocaleString("fr-FR")+" kg" : x.qte.toLocaleString("fr-FR")+" g") : x.qte.toLocaleString("fr-FR")+" u"; }
+function rendreSaisie(){
+  const m=moisDe(sDate.value||auj());
+  const l=D.achats.filter(x=>moisDe(x.date)===m).sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById("s-titre").textContent="Achats de "+nomMois(m);
+  document.getElementById("s-totmois").textContent=eur(l.reduce((s,x)=>s+x.montant,0));
+  document.getElementById("s-liste").innerHTML = l.length ? l.map(x=>`<div class="ligne"><div class="n"><b>${esc(x.nom)}</b><small>${dateFr(x.date,{day:"2-digit",month:"2-digit"})} · ${qteTxt(x)} × ${eur(x.prix)}${x.mode==="kg"?"/kg":""}</small></div><span class="prix">${eur(x.montant)}</span><button class="x" onclick="supprAchat('${x.id}')" aria-label="Supprimer">✕</button></div>`).join("") : `<div class="vide">Aucun achat ce mois-ci</div>`;
+}
+async function supprAchat(id){ if(!await demander("Supprimer cet achat ?","Supprimer")) return; D.achats=D.achats.filter(x=>x.id!==id); save(); rendre(); }
+
+/* ---------- Articles ---------- */
+document.getElementById("a-cherche").oninput=rendreArticles;
+function rendreArticles(){
+  const q=norm(document.getElementById("a-cherche").value);
+  const l=D.articles.filter(a=>!q||correspond(a,q)).sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
+  document.getElementById("a-liste").innerHTML = l.length ? l.map(a=>`<div class="ligne" onclick="ouvrirArticle('${a.id}')"><div class="n"><b>${esc(a.nom)}</b><small>${a.ref?"Réf "+esc(a.ref)+" · ":""}public ${eur(a.pp)} · TVA ${pct(a.tva)}</small></div><span class="prix">${eur(a.prix)}<span class="tag">${a.mode==="kg"?"kg":"unité"}</span><small>prix d'achat</small></span></div>`).join("")
+    : `<div class="vide">${D.articles.length?"Aucun résultat":"Aucun article : importe l'export de la caisse dans Réglages, ou crée-les ici"}</div>`;
+}
+let artEdit=null, modeEdit="u";
+function setMode(m){ modeEdit=m; document.getElementById("art-u").classList.toggle("on",m==="u"); document.getElementById("art-kg").classList.toggle("on",m==="kg"); document.getElementById("art-plabel").textContent = m==="kg"?"Prix public / kg (€)":"Prix public (€)"; majArtCalc(); }
+function majArtCalc(){
+  const pp=parsePrix(document.getElementById("art-pp").value), tva=parseFloat(document.getElementById("art-tva").value);
+  document.getElementById("art-detail").textContent=`Prix d'achat (÷ ${String(coef()).replace(".",",")} + TVA ${pct(tva)})`;
+  document.getElementById("art-pa").textContent = pp===null ? "—" : eur(prixAchat(pp,tva))+(modeEdit==="kg"?" / kg":"");
+}
+document.getElementById("art-pp").oninput=majArtCalc; document.getElementById("art-tva").onchange=majArtCalc;
+function ouvrirArticle(id, defaut){
+  artEdit = id ? D.articles.find(a=>a.id===id) : null; defaut=defaut||{};
+  const a=artEdit||{nom:defaut.nom||"",ref:"",ean:defaut.ean||"",pp:"",tva:5.5,mode:"u"};
+  document.getElementById("art-titre").textContent = artEdit?"Modifier l'article":"Nouvel article";
+  document.getElementById("art-nom").value = a.nom;
+  document.getElementById("art-ref").value = a.ref;
+  document.getElementById("art-ean").value = a.ean;
+  document.getElementById("art-pp").value = a.pp;
+  const sel=document.getElementById("art-tva");
+  if(![...sel.options].some(o=>parseFloat(o.value)===a.tva)) sel.add(new Option(pct(a.tva),a.tva));
+  sel.value=[...sel.options].find(o=>parseFloat(o.value)===a.tva).value;
+  setMode(a.mode);
+  document.getElementById("art-suppr").style.display = artEdit?"block":"none";
+  const h=(artEdit&&artEdit.hist)||[];
+  document.getElementById("art-hist").innerHTML = h.length>1 ? `<small class="aide">Historique des prix :<br>${h.slice().reverse().map(x=>dateFr(x.date)+" → public "+(x.pp!=null?eur(x.pp):"—")+" · achat "+eur(x.prix)).join("<br>")}</small>` : "";
+  fermer("m-qte"); ouvrir("m-art");
+  if(!artEdit) setTimeout(()=>document.getElementById(defaut.nom?"art-pp":"art-nom").focus(),150);
+}
+function enregArticle(){
+  const nom=document.getElementById("art-nom").value.trim(), ref=document.getElementById("art-ref").value.trim(), ean=document.getElementById("art-ean").value.trim();
+  const pp=parsePrix(document.getElementById("art-pp").value), tva=parseFloat(document.getElementById("art-tva").value);
+  if(!nom){ toast("Indique une désignation"); return; }
+  if(pp===null||pp<0){ toast("Indique le prix public"); return; }
+  if(ean){ const d=D.articles.find(a=>a!==artEdit&&a.ean&&eanNorm(a.ean)===eanNorm(ean)); if(d){ toast("Ce code-barre est déjà sur « "+d.nom+" »"); return; } }
+  if(D.articles.find(a=>norm(a.nom)===norm(nom)&&a!==artEdit)){ toast("Un article porte déjà ce nom"); return; }
+  if(artEdit){
+    Object.assign(artEdit,{nom,ref,ean,mode:modeEdit});
+    if(artEdit.tva!==tva){ artEdit.tva=tva; artEdit.pp=null; }
+    majPrixArticle(artEdit,pp);
+  } else {
+    const a={id:uid(),nom,ref,ean,mode:modeEdit,pp,tva,prix:prixAchat(pp,tva),hist:[{date:auj(),pp,prix:prixAchat(pp,tva)}]}; D.articles.push(a);
+    if(document.getElementById("p-saisie").classList.contains("on")){ save(); fermer("m-art"); sCh.value=""; rendreRecherche(); choisir(a.id); return; }
+  }
+  save(); fermer("m-art"); rendre(); toast("Article enregistré");
+}
+async function supprArticle(){
+  if(!artEdit) return; fermer("m-art");
+  if(!await demander("Supprimer « "+artEdit.nom+" » ? Les achats déjà saisis sont conservés.","Supprimer")){ ouvrir("m-art"); return; }
+  D.articles=D.articles.filter(a=>a!==artEdit); save(); rendre();
+}
+
+/* ---------- Scanner ---------- */
+let lecteur=null, scanCb=null;
+function formats(){ const F=window.Html5QrcodeSupportedFormats; return F?[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39]:undefined; }
+async function scanOuvrir(cb){
+  scanCb=cb; document.getElementById("scan-msg").textContent=""; document.getElementById("scan-main").value="";
+  ouvrir("m-scan");
+  if(typeof Html5Qrcode==="undefined"){ document.getElementById("scan-msg").textContent="Lecteur indisponible (pas de connexion ?). Tape le code à la main."; return; }
+  try{
+    lecteur=new Html5Qrcode("lecteur",{formatsToSupport:formats(),verbose:false});
+    await lecteur.start({facingMode:"environment"},{fps:10,qrbox:{width:260,height:130},aspectRatio:1.5},code=>scanTrouve(code),()=>{});
+  }catch(e){ lecteur=null; document.getElementById("scan-msg").textContent="Caméra indisponible. Utilise « Photo du code-barre » ou tape le code."; }
+}
+async function arreterLecteur(){ if(lecteur){ const l=lecteur; lecteur=null; try{ await l.stop(); }catch(e){} try{ l.clear(); }catch(e){} } }
+async function scanFermer(){ await arreterLecteur(); fermer("m-scan"); }
+async function scanTrouve(code){ const cb=scanCb; scanCb=null; await scanFermer(); try{ navigator.vibrate&&navigator.vibrate(60); }catch(e){} if(cb&&code) cb(String(code).trim()); }
+function scanManuel(){ const v=document.getElementById("scan-main").value.trim(); if(v) scanTrouve(v); }
+document.getElementById("scan-main").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); scanManuel(); } });
+document.getElementById("scan-photo").onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  if(typeof Html5Qrcode==="undefined"){ toast("Lecteur indisponible (pas de connexion ?)"); return; }
+  await arreterLecteur();
+  document.getElementById("scan-msg").textContent="Lecture de la photo…";
+  try{ const h=new Html5Qrcode("lecteur-photo",{formatsToSupport:formats(),verbose:false}); const code=await h.scanFile(f,false); try{h.clear();}catch(_){} scanTrouve(code); }
+  catch(err){ document.getElementById("scan-msg").textContent="Aucun code-barre lu sur la photo. Reprends-la plus près, bien à plat et nette."; }
+};
+
+/* ---------- Récap ---------- */
+const rMois=document.getElementById("r-mois"); rMois.value=moisDe(auj()); rMois.onchange=rendreRecap;
+function rendreRecap(){
+  const m=rMois.value, el=document.getElementById("r-contenu"); if(!m){ el.innerHTML=""; return; }
+  const l=D.achats.filter(x=>moisDe(x.date)===m);
+  if(!l.length){ el.innerHTML=`<div class="vide">Aucun achat en ${nomMois(m)}</div>`; return; }
+  const g={}; l.forEach(x=>{ const k=x.nom+"|"+x.mode; (g[k]=g[k]||{nom:x.nom,mode:x.mode,qte:0,mont:0}); g[k].qte+=x.qte; g[k].mont+=x.montant; });
+  const lignes=Object.values(g).sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
+  const tot=l.reduce((s,x)=>s+x.montant,0), p=D.paiements[m];
+  el.innerHTML=`<h2>${esc(D.nom||"")} ${D.nom?"— ":""}${nomMois(m)}</h2>
+   <div class="tab"><table><tr><th>Article</th><th class="r">Qté</th><th class="r">Montant</th></tr>
+   ${lignes.map(r=>`<tr><td>${esc(r.nom)}</td><td class="r">${qteTxt(r)}</td><td class="r">${eur(r.mont)}</td></tr>`).join("")}</table></div>
+   <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><span>${l.length} achat(s)</span><span class="total">${eur(tot)}</span></div>
+   <div style="margin-top:6px">${p?`<span class="paye">✔ Réglé le ${dateFr(p)}</span>`:`<span class="nonpaye">À régler au magasin</span>`}</div>
+   <button class="btn" onclick="exporterRecap('${m}')">⬇︎ Exporter en Excel</button>
+   <button class="btn sec" onclick="partagerRecap('${m}')">Partager le récap</button>
+   <button class="btn ${p?"dang":"sec"}" onclick="basculerPaye('${m}')">${p?"Annuler le règlement":"Marquer comme réglé"}</button>`;
+}
+function basculerPaye(m){ if(D.paiements[m]) delete D.paiements[m]; else D.paiements[m]=auj(); save(); rendreRecap(); }
+function exporterRecap(m){
+  if(typeof XLSX==="undefined"){ toast("Connexion nécessaire pour l'export Excel"); return; }
+  const l=D.achats.filter(x=>moisDe(x.date)===m).sort((a,b)=>a.date.localeCompare(b.date));
+  const aoa=[["Récap achats personnels — "+(D.nom||"")+" — "+nomMois(m)],["Prix d'achat = prix public ÷ "+coef()+" + TVA"],[],["Date","Réf","Article","Vendu","Quantité","Prix public","TVA %","Prix d'achat","Montant (€)"]];
+  l.forEach(x=>aoa.push([dateFr(x.date),x.ref||"",x.nom,x.mode==="kg"?"au kilo":"à l'unité",x.mode==="kg"?x.qte+" g":x.qte,x.pp??"",x.tva??"",x.prix,x.montant]));
+  aoa.push([],["","","","","","","","TOTAL",r2(l.reduce((s,x)=>s+x.montant,0))]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:11},{wch:10},{wch:32},{wch:10},{wch:10},{wch:11},{wch:7},{wch:12},{wch:12}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Récap");
+  XLSX.writeFile(wb,"Achats_"+(D.nom?D.nom.replace(/\W+/g,"_")+"_":"")+m+".xlsx");
+}
+function partagerRecap(m){
+  const l=D.achats.filter(x=>moisDe(x.date)===m).sort((a,b)=>a.date.localeCompare(b.date));
+  const t="Achats personnels "+(D.nom?D.nom+" ":"")+"— "+nomMois(m)+"\n\n"+l.map(x=>dateFr(x.date,{day:"2-digit",month:"2-digit"})+"  "+x.nom+" ("+qteTxt(x)+") : "+eur(x.montant)).join("\n")+"\n\nTOTAL À RÉGLER : "+eur(l.reduce((s,x)=>s+x.montant,0));
+  const copier=()=>{ try{ navigator.clipboard.writeText(t).then(()=>toast("Récap copié"),()=>toast("Copie impossible")); }catch(e){ toast("Copie impossible"); } };
+  if(navigator.share) navigator.share({title:"Récap "+nomMois(m),text:t}).catch(e=>{ if(e&&e.name!=="AbortError") copier(); });
+  else copier();
+}
+
+/* ---------- Import export caisse ---------- */
+let impData=[];
+function typeColonne(t){
+  if(/(code.?barre|ean|gencod|gtin)/.test(t)) return "ean";
+  if(/(tva|taux)/.test(t)) return "tva";
+  if(/(unite|mode de vente|poids)/.test(t)) return "unite";
+  if(/famille|rayon|categorie|fournisseur/.test(t)) return null;
+  if(/(prix|tarif|^pv\b|p\.v|€)/.test(t)) return "prix";
+  if(/^actif|statut/.test(t)) return "actif";
+  if(/(ref|code)/.test(t)) return "ref";
+  if(/(design|libel|article|produit|nom)/.test(t)) return "nom";
+  return null;
+}
+// Fichiers texte de caisse (.dat, .txt, .csv) : encodage Windows ou UTF-8, séparateur ; tabulation ou ,
+function lireTexte(buf){
+  let txt; try{ txt=new TextDecoder("utf-8",{fatal:true}).decode(buf); }catch(e){ txt=new TextDecoder("windows-1252").decode(buf); }
+  const lignes=txt.replace(/^﻿/,"").split(/\r?\n/).filter(l=>l.trim()!=="");
+  if(!lignes.length) return [];
+  const t=lignes[0], sep=[";","\t",",","|"].sort((x,y)=>t.split(y).length-t.split(x).length)[0];
+  return lignes.map(l=>l.split(sep).map(v=>v.trim().replace(/^"(.*)"$/,"$1").trim()));
+}
+function choisirCol(cols,prefer,eviter){
+  if(!cols.length) return null;
+  return (cols.find(([j,t])=>prefer.test(t)&&!(eviter&&eviter.test(t))) || cols.find(([j,t])=>!(eviter&&eviter.test(t))) || cols[0])[0];
+}
+document.getElementById("f-import").onchange=e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  const texte=/\.(dat|txt|csv)$/i.test(f.name);
+  if(!texte&&typeof XLSX==="undefined"){ toast("Connexion nécessaire pour l'import Excel"); return; }
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      let rows;
+      if(texte) rows=lireTexte(new Uint8Array(ev.target.result));
+      else { const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"}); rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:"",raw:true}); }
+      let h=-1, C={};
+      for(let i=0;i<Math.min(rows.length,20)&&h<0;i++){
+        const L={};
+        rows[i].forEach((v,j)=>{ const t=norm(v); if(!t) return; const ty=typeColonne(t); if(ty) (L[ty]=L[ty]||[]).push([j,t]); });
+        const c={};
+        if(L.nom) c.nom=choisirCol(L.nom,/(design|libel|produit|article)/);
+        if(L.prix) c.prix=choisirCol(L.prix,/(public|vente|pv|ttc)/,/achat|revient/);
+        if(L.tva) c.tva=choisirCol(L.tva,/(nom|libel|taux|%)/);
+        if(L.unite) c.unite=choisirCol(L.unite,/(nom|libel)/);
+        if(L.ref) c.ref=choisirCol(L.ref,/(ref|^code$|code art|code produit)/);
+        if(L.ean) c.ean=L.ean[0][0];
+        if(L.actif) c.actif=L.actif[0][0];
+        if(c.nom!=null&&c.prix!=null){ h=i; C=c; }
+      }
+      if(h<0){ // pas d'en-tête : 1re colonne texte = désignation, 1re colonne numérique = prix
+        const estTexte=v=>typeof v==="string"&&v.trim()!==""&&parsePrix(v)===null;
+        const ex=rows.find(r=>r.some(estTexte)&&r.some(v=>!estTexte(v)&&v!==""&&parsePrix(v)!==null));
+        if(!ex) throw 0; C={nom:ex.findIndex(estTexte), prix:ex.findIndex(v=>!estTexte(v)&&v!==""&&parsePrix(v)!==null)}; h=rows.indexOf(ex)-1;
+      }
+      impData=[]; let inactifs=0, sansPrix=0;
+      rows.slice(h+1).forEach(r=>{
+        let nom=String(r[C.nom]??"").trim(); const pp=parsePrix(r[C.prix]); if(!nom) return;
+        if(C.actif!=null&&/^(0|non|n|false)$/i.test(String(r[C.actif]).trim())){ inactifs++; return; }
+        if(pp===null||pp<=0){ sansPrix++; return; }
+        let ean=C.ean!=null?eanNorm(r[C.ean]):"";
+        const m=nom.match(/^(\d{8}|\d{12,14})\s*(\D.*)$/); // code-barre collé devant le nom
+        if(m){ if(!ean) ean=m[1]; nom=m[2].trim(); }
+        const u=C.unite!=null?norm(r[C.unite]):"";
+        const kg = u ? /(kg|kilo|poids|^g$|gramme)/.test(u) : /\b(kg|kilo|vrac|au poids)\b/.test(norm(nom)) || /kg/.test(norm(String(r[C.prix])));
+        const tva = C.tva!=null ? (parseTva(r[C.tva])??5.5) : 5.5;
+        impData.push({ nom, pp, tva:[2.1,5.5,10,20].includes(tva)?tva:5.5, mode:kg?"kg":"u", ref:C.ref!=null?String(r[C.ref]??"").trim():"", ean });
+      });
+      if(!impData.length) throw 0;
+      const noms={nom:"Désignation",ref:"Référence",prix:"Prix public",ean:"Code-barre",tva:"TVA",unite:"Unité"};
+      impNote=(inactifs?`${inactifs} article(s) inactif(s) ignoré(s). `:"")+(sansPrix?`${sansPrix} article(s) sans prix de vente ignoré(s).`:"");
+      afficherImport(Object.keys(noms).filter(k=>C[k]!=null).map(k=>noms[k]).join(", "), C.unite!=null, C.tva!=null);
+    }catch(err){ toast("Impossible de lire ce fichier"); }
+  };
+  r.readAsArrayBuffer(f);
+};
+function existant(x){ return (x.ean&&D.articles.find(a=>a.ean&&eanNorm(a.ean)===eanNorm(x.ean))) || (x.ref&&D.articles.find(a=>a.ref&&norm(a.ref)===norm(x.ref))) || D.articles.find(a=>norm(a.nom)===norm(x.nom)); }
+let impCols="", impU=true, impT=true, impNote="";
+function afficherImport(cols,colU,colT){
+  if(cols!==undefined){ impCols=cols; impU=colU; impT=colT; }
+  const nv=impData.filter(x=>!existant(x)).length;
+  document.getElementById("imp-info").innerHTML=`${impData.length} articles trouvés (${nv} nouveaux, ${impData.length-nv} mis à jour).<br>Colonnes reconnues : ${esc(impCols)}.<br>${impNote?esc(impNote)+"<br>":""}${impT?"":"Pas de colonne TVA : 5,5 % par défaut, à corriger article par article si besoin.<br>"}${impU?"":"Pas de colonne unité/kilo : vérifie le mode de chaque ligne.<br>"}Touche une ligne pour basculer unité ↔ kilo.`;
+  document.getElementById("imp-liste").innerHTML=impData.map((x,i)=>`<div class="ligne" onclick="impBascule(${i})"><div class="n"><b>${esc(x.nom)}</b><small>${x.ref?"Réf "+esc(x.ref)+" · ":""}${x.ean?"EAN "+esc(x.ean)+" · ":""}TVA ${pct(x.tva)}</small></div><span class="prix">${eur(x.pp)}<span class="tag">${x.mode==="kg"?"kg":"unité"}</span><small>achat ${eur(prixAchat(x.pp,x.tva))}</small></span></div>`).join("");
+  ouvrir("m-imp");
+}
+function impBascule(i){ impData[i].mode=impData[i].mode==="kg"?"u":"kg"; afficherImport(); }
+function impTous(m){ impData.forEach(x=>x.mode=m); afficherImport(); }
+function validerImport(){
+  let n=0,u=0;
+  impData.forEach(x=>{
+    const a=existant(x);
+    if(a){ a.nom=x.nom; a.mode=x.mode; if(x.ref) a.ref=x.ref; if(x.ean) a.ean=x.ean; if(a.tva!==x.tva){ a.tva=x.tva; a.pp=null; } majPrixArticle(a,x.pp); u++; }
+    else { const pa=prixAchat(x.pp,x.tva); D.articles.push({id:uid(),nom:x.nom,ref:x.ref,ean:x.ean,mode:x.mode,pp:x.pp,tva:x.tva,prix:pa,hist:[{date:auj(),pp:x.pp,prix:pa}]}); n++; }
+  });
+  save(); fermer("m-imp"); rendre(); toast(`${n} ajoutés, ${u} mis à jour`);
+}
+
+/* ---------- Réglages ---------- */
+const gNom=document.getElementById("g-nom"); gNom.value=D.nom||""; gNom.onchange=()=>{ D.nom=gNom.value.trim(); save(); toast("Enregistré"); };
+const gCoef=document.getElementById("g-coef"); gCoef.value=coef();
+function majExemple(){ document.getElementById("g-exemple").textContent=`Exemple : prix public 10,00 € → ${eur(10/coef())} + TVA 5,5 % = ${eur(prixAchat(10,5.5))} · avec TVA 20 % = ${eur(prixAchat(10,20))}`; }
+gCoef.onchange=()=>{ const c=parsePrix(gCoef.value); if(!c||c<=0){ gCoef.value=coef(); toast("Coefficient invalide"); return; }
+  D.coef=c; D.articles.forEach(a=>a.prix=prixAchat(a.pp,a.tva)); save(); majExemple(); rendre(); toast("Coefficient enregistré : prix d'achat recalculés"); };
+function sauvegarder(){
+  const b=new Blob([JSON.stringify(D,null,1)],{type:"application/json"}), a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download="achats-perso-sauvegarde-"+auj()+".json"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+document.getElementById("f-restaure").onchange=e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  const r=new FileReader(); r.onload=async ev=>{ try{ const x=JSON.parse(ev.target.result); if(!Array.isArray(x.articles)||!Array.isArray(x.achats)) throw 0;
+    if(!await demander(`Remplacer les données actuelles par cette sauvegarde (${x.articles.length} articles, ${x.achats.length} achats) ?`,"Restaurer")) return;
+    D=Object.assign({articles:[],achats:[],paiements:{},nom:"",coef:1.6},x); save(); location.reload(); }catch(err){ toast("Fichier de sauvegarde invalide"); } };
+  r.readAsText(f);
+};
+async function toutEffacer(){ if(!await demander("Effacer toutes les données de ce téléphone ?","Tout effacer")) return; D={articles:[],achats:[],paiements:{},nom:"",coef:coef()}; save(); gNom.value=""; rendre(); toast("Données effacées"); }
+
+function rendre(){ rendreSaisie(); rendreArticles(); rendreRecap(); majExemple(); }
+rendre();
+</script>
+</body>
+</html>
