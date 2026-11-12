@@ -179,7 +179,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <div class="seg"><button id="art-u" onclick="setMode('u')">à l'unité</button><button id="art-kg" onclick="setMode('kg')">au kilo</button></div>
   <div class="row">
     <div><label for="art-pp" id="art-plabel">Prix public</label><input type="number" id="art-pp" inputmode="decimal" min="0" step="0.01"></div>
-    <div><label for="art-tva">TVA</label><select id="art-tva"><option value="5.5">5,5 %</option><option value="20">20 %</option><option value="10">10 %</option><option value="2.1">2,1 %</option></select></div>
+    <div><label for="art-tva">TVA</label><select id="art-tva"><option value="5.5">5,5 %</option><option value="20">20 %</option><option value="10">10 %</option><option value="2.1">2,1 %</option><option value="0">0 %</option></select></div>
   </div>
   <div class="calc"><div><small id="art-detail"></small><b id="art-pa"></b></div></div>
   <div id="art-hist" style="margin-top:8px"></div>
@@ -220,7 +220,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-12-5";
+const VERSION = "v2026-11-12-6";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -270,8 +270,8 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
 
 /* ---------- Recherche ---------- */
 function trouverParCode(code){ const c=eanNorm(code); if(!c) return null;
-  return D.articles.find(a=>a.ean&&eanNorm(a.ean)===c) || D.articles.find(a=>a.ref&&norm(a.ref)===norm(code)) || null; }
-function correspond(a,q){ return norm(a.nom).includes(q) || (a.ref&&norm(a.ref).includes(q)) || (a.ean&&String(a.ean).includes(q)); }
+  return D.articles.find(a=>(a.ean&&eanNorm(a.ean)===c)||(a.eans||[]).includes(c)) || D.articles.find(a=>a.ref&&norm(a.ref)===norm(code)) || null; }
+function correspond(a,q){ return norm(a.nom).includes(q) || (a.ref&&norm(a.ref).includes(q)) || (a.ean&&String(a.ean).includes(q)) || (a.eans||[]).some(e=>e.includes(q)); }
 
 /* ---------- Saisie ---------- */
 const sDate=document.getElementById("s-date"), sCh=document.getElementById("s-cherche");
@@ -373,7 +373,7 @@ function enregArticle(){
   if(!nom){ toast("Indique une désignation"); return; }
   if(pp===null||pp<0){ toast("Indique le prix public"); return; }
   if(ean){ const d=D.articles.find(a=>a!==artEdit&&a.ean&&eanNorm(a.ean)===eanNorm(ean)); if(d){ toast("Ce code-barre est déjà sur « "+d.nom+" »"); return; } }
-  if(D.articles.find(a=>norm(a.nom)===norm(nom)&&a!==artEdit)){ toast("Un article porte déjà ce nom"); return; }
+  if(D.articles.find(a=>a!==artEdit&&norm(a.nom)===norm(nom)&&norm(a.ref||"")===norm(ref))){ toast("Un article porte déjà ce nom"+(ref?" et cette référence":"")); return; }
   if(artEdit){
     Object.assign(artEdit,{nom,ref,ean,mode:modeEdit});
     if(artEdit.tva!==tva){ artEdit.tva=tva; artEdit.pp=null; }
@@ -422,7 +422,7 @@ function rendreRecap(){
   const m=rMois.value, el=document.getElementById("r-contenu"); if(!m){ el.innerHTML=""; return; }
   const l=D.achats.filter(x=>moisDe(x.date)===m);
   if(!l.length){ el.innerHTML=`<div class="vide">Aucun achat en ${nomMois(m)}</div>`; return; }
-  const g={}; l.forEach(x=>{ const k=x.nom+"|"+x.mode; (g[k]=g[k]||{nom:x.nom,mode:x.mode,qte:0,mont:0}); g[k].qte+=x.qte; g[k].mont+=x.montant; });
+  const g={}; l.forEach(x=>{ const k=(x.artId||x.nom)+"|"+x.mode; (g[k]=g[k]||{nom:x.nom,mode:x.mode,qte:0,mont:0}); g[k].qte+=x.qte; g[k].mont+=x.montant; });
   const lignes=Object.values(g).sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
   const tot=l.reduce((s,x)=>s+x.montant,0), p=D.paiements[m];
   el.innerHTML=`<h2>${esc(D.nom||"")} ${D.nom?"— ":""}${nomMois(m)}</h2>
@@ -455,8 +455,28 @@ function partagerRecap(m){
 
 /* ---------- Import export caisse ---------- */
 let impData=[];
+// Réparation des accents perdus (caractère « \uFFFD ») quand le fichier a été converti en route
+function reparerAccents(s){
+  if(!s||s.indexOf("\uFFFD")<0) return s;
+  const X="\uFFFD", maj=(c,i,str)=>{ const p=str[i-1]||"", n=str[i+1]||""; return (/[A-Z]/.test(p)&&!/[a-z]/.test(n)) || (!/[A-Za-z]/.test(p)&&/[A-Z]/.test(n)&&!/[a-z]/.test(str[i+2]||"")); };
+  s=s.replace(/(\d)\uFFFD/g,"$1°")
+     .replace(/\b([dDlLnNsScCjJ])\uFFFD(?=[aeiouyhAEIOUYH\uFFFD])/g,"$1'")
+     .replace(/(^|[^A-Za-zÀ-ſ])\uFFFD(uf|UF)/g,(m,a,b)=>a+(b==="UF"||/^[A-Z]/.test(a)||a===""?"Œ":"œ")+b)
+     .replace(/(^|\s)\uFFFD(?=\s)/g,"$1à")
+     .replace(/b\uFFFDuf/g,"bœuf").replace(/apr\uFFFDs/g,"après").replace(/d'odorant/g,"déodorant")
+     .replace(/a\uFFFDon/g,"açon").replace(/([Ff]r)a\uFFFDch/g,"$1aîch").replace(/o\uFFFDt/g,"oût")
+     .replace(/([Pp])\uFFFDt\uFFFD/g,"$1âté").replace(/\b([Pp])\uFFFDte\b/g,"$1âte").replace(/([Pp])at\uFFFD\b/g,"$1âté");
+  let out="";
+  for(let i=0;i<s.length;i++){
+    const c=s[i]; if(c!==X){ out+=c; continue; }
+    const debut=!/[A-Za-z\u00C0-\u017F]/.test(s[i-1]||""), suite=s.slice(i+1), grave=!debut&&(/^(?:m|r|n|ch|vr|dr|gn|qu|v|c)e/i.test(suite)||/^(?:m|r|n|ch|vr|dr|gn|qu|v|c)E/.test(suite));
+    const L=grave?"è":"é";
+    out+= maj(c,i,s) ? L.toUpperCase() : L;
+  }
+  return out;
+}
 function typeColonne(t){
-  if(/(code.?barre|ean|gencod|gtin)/.test(t)) return "ean";
+  if(/(code.?barre|ean|gencod|gtin|^cab$|^cb$)/.test(t)) return "ean";
   if(/(tva|taux)/.test(t)) return "tva";
   if(/(unite|mode de vente|poids)/.test(t)) return "unite";
   if(/famille|rayon|categorie|fournisseur/.test(t)) return null;
@@ -512,13 +532,15 @@ document.getElementById("f-import").onchange=e=>{
         let nom=String(r[C.nom]??"").trim(); const pp=parsePrix(r[C.prix]); if(!nom) return;
         if(C.actif!=null&&/^(0|non|n|false)$/i.test(String(r[C.actif]).trim())){ inactifs++; return; }
         if(pp===null||pp<=0){ sansPrix++; return; }
-        let ean=C.ean!=null?eanNorm(r[C.ean]):"";
+        const eans=C.ean!=null?r.slice(C.ean).map(v=>String(v??"").trim()).filter(v=>/^\d{8,14}$/.test(v)).map(eanNorm):[];
+        let ean=eans[0]||"";
         const m=nom.match(/^(\d{8}|\d{12,14})\s*(\D.*)$/); // code-barre collé devant le nom
-        if(m){ if(!ean) ean=m[1]; nom=m[2].trim(); }
+        if(m){ if(!ean){ ean=eanNorm(m[1]); eans.push(ean); } nom=m[2].trim(); }
+        nom=reparerAccents(nom);
         const u=C.unite!=null?norm(r[C.unite]):"";
         const kg = u ? /(kg|kilo|poids|^g$|gramme)/.test(u) : /\b(kg|kilo|vrac|au poids)\b/.test(norm(nom)) || /kg/.test(norm(String(r[C.prix])));
         const tva = C.tva!=null ? (parseTva(r[C.tva])??5.5) : 5.5;
-        impData.push({ nom, pp, tva:[2.1,5.5,10,20].includes(tva)?tva:5.5, mode:kg?"kg":"u", ref:C.ref!=null?String(r[C.ref]??"").trim():"", ean });
+        impData.push({ nom, pp, tva:[0,2.1,5.5,10,20].includes(tva)?tva:5.5, mode:kg?"kg":"u", ref:C.ref!=null?String(r[C.ref]??"").trim():"", ean, eans });
       });
       if(!impData.length) throw 0;
       const noms={nom:"Désignation",ref:"Référence",prix:"Prix public",ean:"Code-barre",tva:"TVA",unite:"Unité"};
@@ -528,7 +550,7 @@ document.getElementById("f-import").onchange=e=>{
   };
   r.readAsArrayBuffer(f);
 };
-function existant(x){ return (x.ean&&D.articles.find(a=>a.ean&&eanNorm(a.ean)===eanNorm(x.ean))) || (x.ref&&D.articles.find(a=>a.ref&&norm(a.ref)===norm(x.ref))) || D.articles.find(a=>norm(a.nom)===norm(x.nom)); }
+function existant(x){ return (x.ref&&D.articles.find(a=>a.ref&&norm(a.ref)===norm(x.ref))) || (x.ean&&D.articles.find(a=>(a.ean&&eanNorm(a.ean)===eanNorm(x.ean))||(a.eans||[]).includes(eanNorm(x.ean)))) || (!x.ref&&D.articles.find(a=>!a.ref&&norm(a.nom)===norm(x.nom))) || null; }
 let impCols="", impU=true, impT=true, impNote="";
 function afficherImport(cols,colU,colT){
   if(cols!==undefined){ impCols=cols; impU=colU; impT=colT; }
@@ -543,8 +565,8 @@ function validerImport(){
   let n=0,u=0;
   impData.forEach(x=>{
     const a=existant(x);
-    if(a){ a.nom=x.nom; a.mode=x.mode; if(x.ref) a.ref=x.ref; if(x.ean) a.ean=x.ean; if(a.tva!==x.tva){ a.tva=x.tva; a.pp=null; } majPrixArticle(a,x.pp); u++; }
-    else { const pa=prixAchat(x.pp,x.tva); D.articles.push({id:uid(),nom:x.nom,ref:x.ref,ean:x.ean,mode:x.mode,pp:x.pp,tva:x.tva,prix:pa,hist:[{date:auj(),pp:x.pp,prix:pa}]}); n++; }
+    if(a){ a.nom=x.nom; if(x.ref) a.ref=x.ref; if(x.ean) a.ean=x.ean; if(x.eans&&x.eans.length) a.eans=x.eans; if(a.tva!==x.tva){ a.tva=x.tva; a.pp=null; } majPrixArticle(a,x.pp); u++; }
+    else { const pa=prixAchat(x.pp,x.tva); D.articles.push({id:uid(),nom:x.nom,ref:x.ref,ean:x.ean,eans:x.eans||[],mode:x.mode,pp:x.pp,tva:x.tva,prix:pa,hist:[{date:auj(),pp:x.pp,prix:pa}]}); n++; }
   });
   save(); fermer("m-imp"); rendre(); toast(`${n} ajoutés, ${u} mis à jour`);
 }
