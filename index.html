@@ -48,6 +48,12 @@ input,select{width:100%;font-size:16px;padding:10px;border:1px solid var(--bord)
 .seg{display:flex;border:1px solid var(--vert);border-radius:8px;overflow:hidden}
 .seg button{flex:1;border:0;padding:10px;background:var(--blanc);color:var(--vert);font-size:15px}
 .seg button.on{background:var(--vert);color:var(--survert)}
+.qte{display:flex;gap:8px;align-items:stretch}
+.qte input{flex:1;min-width:0;text-align:center;font-size:22px;font-weight:600}
+.qte .pas{flex:0 0 56px;border:1px solid var(--vert);background:var(--vert2);color:var(--vert);border-radius:8px;font-size:26px;font-weight:600}
+.rapides{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rapides button{flex:1 0 calc(16.66% - 6px);min-width:44px;border:1px solid var(--bord);background:var(--blanc);color:var(--txt);border-radius:8px;padding:10px 0;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.rapides button.on{background:var(--vert);border-color:var(--vert);color:var(--survert)}
 .total{font-size:22px;font-weight:700;color:var(--vert);text-align:right}
 .vide{color:var(--gris);text-align:center;padding:16px;font-size:14px}
 .aide{color:var(--gris);font-size:13px;display:block;margin-top:4px}
@@ -161,7 +167,12 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <h2 id="q-nom"></h2>
   <small class="aide" id="q-info"></small>
   <label for="q-val" id="q-label"></label>
-  <input type="number" id="q-val" inputmode="decimal" min="0" step="any">
+  <div class="qte">
+    <button type="button" class="pas" onclick="qPas(-1)" aria-label="Moins">−</button>
+    <input type="number" id="q-val" inputmode="decimal" min="0" step="any">
+    <button type="button" class="pas" onclick="qPas(1)" aria-label="Plus">＋</button>
+  </div>
+  <div class="rapides" id="q-rapides"></div>
   <label for="q-pp" id="q-plabel">Prix public</label>
   <input type="number" id="q-pp" inputmode="decimal" min="0" step="0.01">
   <small class="aide">Si le prix public a changé, corrige-le ici : l'article est mis à jour pour les prochains achats.</small>
@@ -192,6 +203,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <div class="calc"><div><small id="art-detail"></small><b id="art-pa"></b></div></div>
   <div id="art-hist" style="margin-top:8px"></div>
   <button class="btn" onclick="enregArticle()">Enregistrer</button>
+  <button class="btn sec" id="art-acheter" onclick="acheterDepuisFiche()">🛒 Ajouter un achat de cet article</button>
   <button class="btn dang" id="art-suppr" onclick="supprArticle()">Supprimer l'article</button>
   <button class="btn sec" onclick="fermer('m-art')">Annuler</button>
 </div></div>
@@ -228,7 +240,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-12-8";
+const VERSION = "v2026-11-12-9";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -308,9 +320,15 @@ function choisir(id){
   document.getElementById("q-label").textContent= a.mode==="kg" ? "Poids en grammes" : "Quantité (unités)";
   document.getElementById("q-plabel").textContent= a.mode==="kg" ? "Prix public au kilo (€)" : "Prix public à l'unité (€)";
   document.getElementById("q-pp").value=a.pp;
-  const v=document.getElementById("q-val"); v.value = a.mode==="kg" ? "" : "1"; majMontant();
+  const v=document.getElementById("q-val"); v.value = a.mode==="kg" ? "" : "1";
+  const vals = a.mode==="kg" ? [100,200,250,500,750,1000] : [1,2,3,4,5,6,8,10,12,24];
+  document.getElementById("q-rapides").innerHTML = vals.map(n=>`<button type="button" onclick="qFixe(${n})">${a.mode==="kg"?(n>=1000?(n/1000)+" kg":n+" g"):n}</button>`).join("");
+  majMontant();
   ouvrir("m-qte"); setTimeout(()=>{v.focus(); v.select();},150);
 }
+function qLue(){ return parseFloat(String(document.getElementById("q-val").value).replace(",","."))||0; }
+function qFixe(n){ document.getElementById("q-val").value=n; majMontant(); }
+function qPas(sens){ const pas=artChoisi&&artChoisi.mode==="kg"?50:1; qFixe(Math.max(0,Math.round((qLue()+sens*pas)*1000)/1000)); }
 document.getElementById("q-val").oninput=majMontant; document.getElementById("q-pp").oninput=majMontant;
 function ppSaisi(){ const p=parsePrix(document.getElementById("q-pp").value); return p===null?artChoisi.pp:p; }
 const montantDe = (mode,q,pa) => mode==="kg" ? pa*q/1000 : pa*q;
@@ -320,6 +338,7 @@ function majMontant(){
   document.getElementById("q-detail").textContent=`Prix d'achat (${eur(pp)} ÷ ${String(coef()).replace(".",",")} + TVA ${pct(artChoisi.tva)})`;
   document.getElementById("q-pa").textContent=eur(pa)+" "+unite(artChoisi);
   document.getElementById("q-mont").textContent=eur(montantDe(artChoisi.mode,q,pa));
+  document.querySelectorAll("#q-rapides button").forEach(b=>b.classList.toggle("on",b.getAttribute("onclick")==="qFixe("+q+")"));
 }
 function majPrixArticle(a,pp){ if(pp===a.pp) return false; a.pp=pp; a.prix=prixAchat(pp,a.tva); a.hist=a.hist||[]; a.hist.push({date:auj(),pp,prix:a.prix}); return true; }
 function validerAchat(){
@@ -370,6 +389,7 @@ function ouvrirArticle(id, defaut){
   sel.value=[...sel.options].find(o=>parseFloat(o.value)===a.tva).value;
   setMode(a.mode);
   document.getElementById("art-suppr").style.display = artEdit?"block":"none";
+  document.getElementById("art-acheter").style.display = artEdit?"block":"none";
   const h=(artEdit&&artEdit.hist)||[];
   document.getElementById("art-hist").innerHTML = h.length>1 ? `<small class="aide">Historique des prix :<br>${h.slice().reverse().map(x=>dateFr(x.date)+" → public "+(x.pp!=null?eur(x.pp):"—")+" · achat "+eur(x.prix)).join("<br>")}</small>` : "";
   fermer("m-qte"); ouvrir("m-art");
@@ -392,6 +412,7 @@ function enregArticle(){
   }
   save(); fermer("m-art"); rendre(); toast("Article enregistré");
 }
+function acheterDepuisFiche(){ if(!artEdit) return; const id=artEdit.id; fermer("m-art"); choisir(id); }
 async function supprArticle(){
   if(!artEdit) return; fermer("m-art");
   if(!await demander("Supprimer « "+artEdit.nom+" » ? Les achats déjà saisis sont conservés.","Supprimer")){ ouvrir("m-art"); return; }
