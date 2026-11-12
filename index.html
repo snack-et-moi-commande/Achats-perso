@@ -67,6 +67,13 @@ input,select{width:100%;font-size:16px;padding:10px;border:1px solid var(--bord)
 table{width:100%;border-collapse:collapse;font-size:14px}
 td,th{padding:6px 4px;border-bottom:1px solid var(--bord);text-align:left}
 td.r,th.r{text-align:right;white-space:nowrap}
+.recap table{min-width:640px;font-size:13px}
+.recap td.des{min-width:150px;max-width:180px}
+.recap tr>*:first-child{position:sticky;left:0;background:var(--blanc);z-index:1;box-shadow:1px 0 0 var(--bord)}
+.recap td.cb{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--gris)}
+.recap td.r{font-variant-numeric:tabular-nums}
+.recap tr.tot td{font-weight:700;border-top:2px solid var(--txt)}
+.recap th{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -221,7 +228,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-12-7";
+const VERSION = "v2026-11-12-8";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -321,7 +328,7 @@ function validerAchat(){
   const a=artChoisi, pp=ppSaisi();
   if(pp<0){ toast("Prix invalide"); return; }
   const maj=majPrixArticle(a,pp), pa=prixAchat(pp,a.tva);
-  D.achats.push({ id:uid(), date:sDate.value||auj(), artId:a.id, nom:a.nom, ref:a.ref, mode:a.mode, qte:q, pp, tva:a.tva, prix:pa, montant:r2(montantDe(a.mode,q,pa)) });
+  D.achats.push({ id:uid(), date:sDate.value||auj(), artId:a.id, nom:a.nom, ref:a.ref, ean:a.ean||"", mode:a.mode, qte:q, pp, tva:a.tva, prix:pa, montant:r2(montantDe(a.mode,q,pa)) });
   save(); fermer("m-qte"); sCh.value=""; rendreRecherche(); rendre(); toast(maj?"Achat ajouté, prix mis à jour":"Achat ajouté");
 }
 function qteTxt(x){ return x.mode==="kg" ? (x.qte>=1000 ? (x.qte/1000).toLocaleString("fr-FR")+" kg" : x.qte.toLocaleString("fr-FR")+" g") : x.qte.toLocaleString("fr-FR")+" u"; }
@@ -419,17 +426,38 @@ document.getElementById("scan-photo").onchange=async e=>{
 
 /* ---------- Récap ---------- */
 const rMois=document.getElementById("r-mois"); rMois.value=moisDe(auj()); rMois.onchange=rendreRecap;
+// Lignes du récap : une ligne par article (et par prix, si le prix a changé dans le mois)
+function lignesRecap(m){
+  const l=D.achats.filter(x=>moisDe(x.date)===m), g={};
+  l.forEach(x=>{
+    const a=D.articles.find(y=>y.id===x.artId), tva=x.tva??(a?a.tva:5.5);
+    const k=(x.artId||x.nom)+"|"+x.mode+"|"+x.prix;
+    g[k]=g[k]||{nom:x.nom,ean:x.ean||(a&&a.ean)||"",ref:x.ref||(a&&a.ref)||"",mode:x.mode,tva,pu:x.prix,qte:0,ttc:0};
+    g[k].qte+=x.qte; g[k].ttc+=x.montant;
+  });
+  const lignes=Object.values(g).sort((a,b)=>a.nom.localeCompare(b.nom,"fr")).map(r=>{
+    r.ttc=r2(r.ttc); r.ht=r2(r.ttc/(1+r.tva/100)); r.mtva=r2(r.ttc-r.ht); r.puht=Math.round(r.pu/(1+r.tva/100)*1000)/1000; return r; });
+  const taux=[...new Set([5.5,20,...lignes.map(r=>r.tva).filter(t=>t>0)])].sort((x,y)=>x-y);
+  const tot={ht:0,ttc:0,tva:{}}; taux.forEach(t=>tot.tva[t]=0);
+  lignes.forEach(r=>{ tot.ht+=r.ht; tot.ttc+=r.ttc; if(r.tva>0) tot.tva[r.tva]+=r.mtva; });
+  tot.ht=r2(tot.ht); tot.ttc=r2(tot.ttc); taux.forEach(t=>tot.tva[t]=r2(tot.tva[t]));
+  return {achats:l, lignes, taux, tot};
+}
+const nb = n => r2(n).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const nb3 = n => n.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:3});
 function rendreRecap(){
   const m=rMois.value, el=document.getElementById("r-contenu"); if(!m){ el.innerHTML=""; return; }
-  const l=D.achats.filter(x=>moisDe(x.date)===m);
-  if(!l.length){ el.innerHTML=`<div class="vide">Aucun achat en ${nomMois(m)}</div>`; return; }
-  const g={}; l.forEach(x=>{ const k=(x.artId||x.nom)+"|"+x.mode; (g[k]=g[k]||{nom:x.nom,mode:x.mode,qte:0,mont:0}); g[k].qte+=x.qte; g[k].mont+=x.montant; });
-  const lignes=Object.values(g).sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
-  const tot=l.reduce((s,x)=>s+x.montant,0), p=D.paiements[m];
+  const R=lignesRecap(m);
+  if(!R.achats.length){ el.innerHTML=`<div class="vide">Aucun achat en ${nomMois(m)}</div>`; return; }
+  const p=D.paiements[m];
   el.innerHTML=`<h2>${esc(D.nom||"")} ${D.nom?"— ":""}${nomMois(m)}</h2>
-   <div class="tab"><table><tr><th>Article</th><th class="r">Qté</th><th class="r">Montant</th></tr>
-   ${lignes.map(r=>`<tr><td>${esc(r.nom)}</td><td class="r">${qteTxt(r)}</td><td class="r">${eur(r.mont)}</td></tr>`).join("")}</table></div>
-   <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><span>${l.length} achat(s)</span><span class="total">${eur(tot)}</span></div>
+   <small class="aide">Montants en euros. Fais glisser le tableau vers la gauche pour voir toutes les colonnes.</small>
+   <div class="tab recap"><table>
+   <tr><th>Désignation</th><th>Code-barre</th><th class="r">Qté</th><th class="r">PU HT</th><th class="r">Total HT</th>${R.taux.map(t=>`<th class="r">TVA ${pct(t)}</th>`).join("")}<th class="r">Total TTC</th></tr>
+   ${R.lignes.map(r=>`<tr><td class="des">${esc(r.nom)}</td><td class="cb">${esc(r.ean||"—")}</td><td class="r">${qteTxt(r)}</td><td class="r">${nb3(r.puht)}${r.mode==="kg"?"/kg":""}</td><td class="r">${nb(r.ht)}</td>${R.taux.map(t=>`<td class="r">${r.tva===t?nb(r.mtva):""}</td>`).join("")}<td class="r"><b>${nb(r.ttc)}</b></td></tr>`).join("")}
+   <tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td class="r">${nb(R.tot.ht)}</td>${R.taux.map(t=>`<td class="r">${nb(R.tot.tva[t])}</td>`).join("")}<td class="r">${nb(R.tot.ttc)}</td></tr>
+   </table></div>
+   <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><span>${R.achats.length} achat(s) · total TTC</span><span class="total">${eur(R.tot.ttc)}</span></div>
    <div style="margin-top:6px">${p?`<span class="paye">✔ Réglé le ${dateFr(p)}</span>`:`<span class="nonpaye">À régler au magasin</span>`}</div>
    <button class="btn" onclick="exporterRecap('${m}')">⬇︎ Exporter en Excel</button>
    <button class="btn sec" onclick="partagerRecap('${m}')">Partager le récap</button>
@@ -438,17 +466,26 @@ function rendreRecap(){
 function basculerPaye(m){ if(D.paiements[m]) delete D.paiements[m]; else D.paiements[m]=auj(); save(); rendreRecap(); }
 function exporterRecap(m){
   if(typeof XLSX==="undefined"){ toast("Connexion nécessaire pour l'export Excel"); return; }
-  const l=D.achats.filter(x=>moisDe(x.date)===m).sort((a,b)=>a.date.localeCompare(b.date));
-  const aoa=[["Récap achats personnels — "+(D.nom||"")+" — "+nomMois(m)],["Prix d'achat = prix public ÷ "+coef()+" + TVA"],[],["Date","Réf","Article","Vendu","Quantité","Prix public","TVA %","Prix d'achat","Montant (€)"]];
-  l.forEach(x=>aoa.push([dateFr(x.date),x.ref||"",x.nom,x.mode==="kg"?"au kilo":"à l'unité",x.mode==="kg"?x.qte+" g":x.qte,x.pp??"",x.tva??"",x.prix,x.montant]));
-  aoa.push([],["","","","","","","","TOTAL",r2(l.reduce((s,x)=>s+x.montant,0))]);
-  const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:11},{wch:10},{wch:32},{wch:10},{wch:10},{wch:11},{wch:7},{wch:12},{wch:12}];
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Récap");
+  const R=lignesRecap(m);
+  const tete=["Désignation","Code-barre","Référence","Quantité","Unité","PU HT","Total HT",...R.taux.map(t=>"TVA "+pct(t)),"Total TTC"];
+  const aoa=[["Récap achats personnels — "+(D.nom||"")+" — "+nomMois(m)],["Prix d'achat = prix public ÷ "+String(coef()).replace(".",",")+" + TVA"],[],tete];
+  R.lignes.forEach(r=>aoa.push([r.nom,r.ean||"",r.ref||"",r.qte,r.mode==="kg"?"g":"unité",r.puht,r.ht,...R.taux.map(t=>r.tva===t?r.mtva:null),r.ttc]));
+  aoa.push(["TOTAL","","","","","",R.tot.ht,...R.taux.map(t=>R.tot.tva[t]),R.tot.ttc]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:38},{wch:15},{wch:10},{wch:9},{wch:7},{wch:9},{wch:11},...R.taux.map(()=>({wch:10})),{wch:12}];
+  const range=XLSX.utils.decode_range(ws["!ref"]);
+  for(let row=4;row<=range.e.r;row++) for(let col=5;col<=range.e.c;col++){ const c=ws[XLSX.utils.encode_cell({r:row,c:col})]; if(c&&c.t==="n") c.z="#,##0.00"; }
+  for(let row=4;row<=range.e.r;row++){ const c=ws[XLSX.utils.encode_cell({r:row,c:1})]; if(c){ c.t="s"; c.v=String(c.v); } }
+  const det=[["Date","Désignation","Code-barre","Quantité","Unité","Prix public","TVA %","Prix d'achat TTC","Montant TTC"]];
+  R.achats.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ const a=D.articles.find(y=>y.id===x.artId); det.push([dateFr(x.date),x.nom,x.ean||(a&&a.ean)||"",x.qte,x.mode==="kg"?"g":"unité",x.pp??"",x.tva??"",x.prix,x.montant]); });
+  const ws2=XLSX.utils.aoa_to_sheet(det); ws2["!cols"]=[{wch:11},{wch:38},{wch:15},{wch:9},{wch:7},{wch:11},{wch:7},{wch:14},{wch:12}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Récap"); XLSX.utils.book_append_sheet(wb,ws2,"Détail des achats");
   XLSX.writeFile(wb,"Achats_"+(D.nom?D.nom.replace(/\W+/g,"_")+"_":"")+m+".xlsx");
 }
 function partagerRecap(m){
-  const l=D.achats.filter(x=>moisDe(x.date)===m).sort((a,b)=>a.date.localeCompare(b.date));
-  const t="Achats personnels "+(D.nom?D.nom+" ":"")+"— "+nomMois(m)+"\n\n"+l.map(x=>dateFr(x.date,{day:"2-digit",month:"2-digit"})+"  "+x.nom+" ("+qteTxt(x)+") : "+eur(x.montant)).join("\n")+"\n\nTOTAL À RÉGLER : "+eur(l.reduce((s,x)=>s+x.montant,0));
+  const R=lignesRecap(m);
+  const t="Achats personnels "+(D.nom?D.nom+" ":"")+"— "+nomMois(m)+"\n\n"+R.lignes.map(r=>r.nom+" ("+qteTxt(r)+") : HT "+nb(r.ht)+" + TVA "+pct(r.tva)+" "+nb(r.mtva)+" = "+eur(r.ttc)).join("\n")
+    +"\n\nTotal HT : "+eur(R.tot.ht)+"\n"+R.taux.map(x=>"TVA "+pct(x)+" : "+eur(R.tot.tva[x])).join("\n")+"\nTOTAL TTC À RÉGLER : "+eur(R.tot.ttc);
   const copier=()=>{ try{ navigator.clipboard.writeText(t).then(()=>toast("Récap copié"),()=>toast("Copie impossible")); }catch(e){ toast("Copie impossible"); } };
   if(navigator.share) navigator.share({title:"Récap "+nomMois(m),text:t}).catch(e=>{ if(e&&e.name!=="AbortError") copier(); });
   else copier();
