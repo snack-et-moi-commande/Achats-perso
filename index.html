@@ -173,12 +173,13 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <label for="q-val" id="q-label"></label>
   <div class="qte">
     <button type="button" class="pas" onclick="qPas(-1)" aria-label="Moins">−</button>
-    <input type="number" id="q-val" inputmode="decimal" min="0" step="any">
+    <input type="text" id="q-val" inputmode="decimal" autocomplete="off">
     <button type="button" class="pas" onclick="qPas(1)" aria-label="Plus">＋</button>
   </div>
   <div class="rapides" id="q-rapides"></div>
+  <small class="aide" id="q-aide"></small>
   <label for="q-pp" id="q-plabel">Prix public</label>
-  <input type="number" id="q-pp" inputmode="decimal" min="0" step="0.01">
+  <input type="text" id="q-pp" inputmode="decimal" autocomplete="off">
   <small class="aide">Si le prix public a changé, corrige-le ici : l'article est mis à jour pour les prochains achats.</small>
   <div class="calc">
     <div><small id="q-detail"></small><span id="q-pa"></span></div>
@@ -201,7 +202,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <label>Vendu</label>
   <div class="seg"><button id="art-u" onclick="setMode('u')">à l'unité</button><button id="art-kg" onclick="setMode('kg')">au kilo</button></div>
   <div class="row">
-    <div><label for="art-pp" id="art-plabel">Prix public</label><input type="number" id="art-pp" inputmode="decimal" min="0" step="0.01"></div>
+    <div><label for="art-pp" id="art-plabel">Prix public</label><input type="text" id="art-pp" inputmode="decimal" autocomplete="off"></div>
     <div><label for="art-tva">TVA</label><select id="art-tva"><option value="5.5">5,5 %</option><option value="20">20 %</option><option value="10">10 %</option><option value="2.1">2,1 %</option><option value="0">0 %</option></select></div>
   </div>
   <div class="calc"><div><small id="art-detail"></small><b id="art-pa"></b></div></div>
@@ -244,7 +245,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-14-1";
+const VERSION = "v2026-11-14-2";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -321,32 +322,35 @@ function choisir(id){
   const a=artChoisi;
   document.getElementById("q-nom").textContent=a.nom;
   document.getElementById("q-info").textContent=[a.ref?"Réf "+a.ref:"",a.ean?"EAN "+a.ean:"","TVA "+pct(a.tva)].filter(Boolean).join(" · ");
-  document.getElementById("q-label").textContent= a.mode==="kg" ? "Poids en grammes" : "Quantité (unités)";
+  document.getElementById("q-label").textContent= a.mode==="kg" ? "Poids en kg (ex. 1,475)" : "Quantité (unités)";
   document.getElementById("q-plabel").textContent= a.mode==="kg" ? "Prix public au kilo (€)" : "Prix public à l'unité (€)";
-  document.getElementById("q-pp").value=a.pp;
+  document.getElementById("q-pp").value=String(a.pp).replace(".",",");
   const v=document.getElementById("q-val"); v.value = a.mode==="kg" ? "" : "1";
-  const vals = a.mode==="kg" ? [100,200,250,500,750,1000] : [1,2,3,4,5,6,8,10,12,24];
-  document.getElementById("q-rapides").innerHTML = vals.map(n=>`<button type="button" onclick="qFixe(${n})">${a.mode==="kg"?(n>=1000?(n/1000)+" kg":n+" g"):n}</button>`).join("");
+  const vals = a.mode==="kg" ? [0.1,0.2,0.25,0.5,0.75,1] : [1,2,3,4,5,6,8,10,12,24];
+  document.getElementById("q-rapides").innerHTML = vals.map(n=>`<button type="button" onclick="qFixe(${n})">${a.mode==="kg"?(n>=1?n+" kg":Math.round(n*1000)+" g"):n}</button>`).join("");
   majMontant();
   ouvrir("m-qte"); setTimeout(()=>{v.focus(); v.select();},150);
 }
-function qLue(){ return parseFloat(String(document.getElementById("q-val").value).replace(",","."))||0; }
-function qFixe(n){ document.getElementById("q-val").value=n; majMontant(); }
-function qPas(sens){ const pas=artChoisi&&artChoisi.mode==="kg"?50:1; qFixe(Math.max(0,Math.round((qLue()+sens*pas)*1000)/1000)); }
+function qLue(){ const v=parseFloat(String(document.getElementById("q-val").value).replace(/\s/g,"").replace(",","."))||0; return v<0?0:v; }
+// Quantité enregistrée : unités, ou grammes pour un article au kilo (saisi en kg ; un nombre > 50 est compris comme des grammes)
+function qInterne(){ const v=qLue(); if(!artChoisi||artChoisi.mode!=="kg") return v; return v>50 ? Math.round(v) : Math.round(v*1000); }
+function qFixe(n){ document.getElementById("q-val").value=String(n).replace(".",","); majMontant(); }
+function qPas(sens){ const kg=artChoisi&&artChoisi.mode==="kg"; let v=kg?qInterne()/1000:qLue(); v=Math.max(0,Math.round((v+sens*(kg?0.05:1))*1000)/1000); qFixe(v); }
 document.getElementById("q-val").oninput=majMontant; document.getElementById("q-pp").oninput=majMontant;
 function ppSaisi(){ const p=parsePrix(document.getElementById("q-pp").value); return p===null?artChoisi.pp:p; }
 const montantDe = (mode,q,pa) => mode==="kg" ? pa*q/1000 : pa*q;
 function majMontant(){
   if(!artChoisi) return;
-  const q=parseFloat(String(document.getElementById("q-val").value).replace(",","."))||0, pp=ppSaisi(), pa=prixAchat(pp,artChoisi.tva);
+  const q=qInterne(), pp=ppSaisi(), pa=prixAchat(pp,artChoisi.tva);
+  document.getElementById("q-aide").textContent = artChoisi.mode==="kg"&&q ? "Poids retenu : "+(q>=1000?(q/1000).toLocaleString("fr-FR")+" kg":q+" g") : "";
   document.getElementById("q-detail").textContent=`Prix d'achat (${eur(pp)} ÷ ${String(coef()).replace(".",",")} + TVA ${pct(artChoisi.tva)})`;
   document.getElementById("q-pa").textContent=eur(pa)+" "+unite(artChoisi);
   document.getElementById("q-mont").textContent=eur(montantDe(artChoisi.mode,q,pa));
-  document.querySelectorAll("#q-rapides button").forEach(b=>b.classList.toggle("on",b.getAttribute("onclick")==="qFixe("+q+")"));
+  document.querySelectorAll("#q-rapides button").forEach(b=>b.classList.toggle("on",b.getAttribute("onclick")==="qFixe("+(artChoisi.mode==="kg"?q/1000:q)+")"));
 }
 function majPrixArticle(a,pp){ if(pp===a.pp) return false; a.pp=pp; a.prix=prixAchat(pp,a.tva); a.hist=a.hist||[]; a.hist.push({date:auj(),pp,prix:a.prix}); return true; }
 function validerAchat(){
-  const q=parseFloat(String(document.getElementById("q-val").value).replace(",","."));
+  const q=qInterne();
   if(!q||q<=0){ toast("Indique une quantité"); return; }
   const a=artChoisi, pp=ppSaisi();
   if(pp<0){ toast("Prix invalide"); return; }
@@ -387,7 +391,7 @@ function ouvrirArticle(id, defaut){
   document.getElementById("art-nom").value = a.nom;
   document.getElementById("art-ref").value = a.ref;
   document.getElementById("art-ean").value = a.ean;
-  document.getElementById("art-pp").value = a.pp;
+  document.getElementById("art-pp").value = String(a.pp??"").replace(".",",");
   const sel=document.getElementById("art-tva");
   if(![...sel.options].some(o=>parseFloat(o.value)===a.tva)) sel.add(new Option(pct(a.tva),a.tva));
   sel.value=[...sel.options].find(o=>parseFloat(o.value)===a.tva).value;
