@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#2f6f4f">
 <title>Achats perso</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
 <style>
 :root{--vert:#2f6f4f;--vert2:#e7f2ec;--txt:#1d2421;--gris:#6b7570;--bord:#dfe5e2;--fond:#f6f8f7;--rouge:#c0392b;--rouge2:#fbeaea;--blanc:#fff;--entete:#2f6f4f;--survert:#fff;--toast:#222}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--vert:#6fbf94;--vert2:#1f3a2c;--txt:#e6ece9;--gris:#9aa5a0;--bord:#2e3833;--fond:#121614;--rouge:#e8796c;--rouge2:#3a2220;--blanc:#1b211e;--entete:#1f4a35;--survert:#0e1a14;--toast:#e6ece9;color-scheme:dark}}
@@ -65,7 +65,11 @@ input,select{width:100%;font-size:16px;padding:10px;border:1px solid var(--bord)
 .calc div{display:flex;justify-content:space-between;gap:8px}
 .calc .fort{font-weight:700;font-size:17px;margin-top:4px}
 .calc small{color:var(--gris)}
-#lecteur{width:100%;border-radius:10px;overflow:hidden;background:#000;min-height:60px}
+#lecteur{position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3;max-width:100%}
+#scan-video{width:100%;height:100%;object-fit:cover;display:block}
+.viseur{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.viseur span{position:relative;width:86%;height:50%;border:3px solid rgba(255,255,255,.9);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.viseur span::after{content:"";position:absolute;left:6px;right:6px;top:50%;height:2px;background:#e8463a;opacity:.9}
 #scan-msg{color:var(--rouge);font-size:14px;margin-top:8px}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--toast);color:var(--fond);padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:40;max-width:90%;text-align:center}
 .paye{color:var(--vert);font-weight:600}.nonpaye{color:var(--rouge);font-weight:600}
@@ -221,12 +225,12 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <!-- Modale scanner -->
 <div class="modal" id="m-scan"><div class="box">
   <h2>Scanner le code-barre</h2>
-  <div id="lecteur"></div>
+  <div id="lecteur"><video id="scan-video" playsinline muted autoplay></video><div class="viseur"><span></span></div></div>
+  <button type="button" class="btn sec" id="scan-lampe" hidden onclick="basculerLampe()">🔦 Lampe</button>
   <div id="scan-msg"></div>
   <label class="btn sec" style="text-align:center;cursor:pointer">📷 Photo du code-barre<input type="file" id="scan-photo" accept="image/*" capture="environment" hidden></label>
   <label for="scan-main">ou taper le code</label>
   <div class="row"><input type="text" id="scan-main" inputmode="numeric" autocomplete="off"><button class="icone petit" onclick="scanManuel()">OK</button></div>
-  <div id="lecteur-photo" hidden></div>
   <button class="btn sec" onclick="scanFermer()">Fermer</button>
 </div></div>
 
@@ -240,7 +244,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-12-10";
+const VERSION = "v2026-11-14-1";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -419,30 +423,92 @@ async function supprArticle(){
   D.articles=D.articles.filter(a=>a!==artEdit); save(); rendre();
 }
 
-/* ---------- Scanner ---------- */
-let lecteur=null, scanCb=null;
-function formats(){ const F=window.Html5QrcodeSupportedFormats; return F?[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39]:undefined; }
-async function scanOuvrir(cb){
-  scanCb=cb; document.getElementById("scan-msg").textContent=""; document.getElementById("scan-main").value="";
-  ouvrir("m-scan");
-  if(typeof Html5Qrcode==="undefined"){ document.getElementById("scan-msg").textContent="Lecteur indisponible (pas de connexion ?). Tape le code à la main."; return; }
-  try{
-    lecteur=new Html5Qrcode("lecteur",{formatsToSupport:formats(),verbose:false});
-    await lecteur.start({facingMode:"environment"},{fps:10,qrbox:{width:260,height:130},aspectRatio:1.5},code=>scanTrouve(code),()=>{});
-  }catch(e){ lecteur=null; document.getElementById("scan-msg").textContent="Caméra indisponible. Utilise « Photo du code-barre » ou tape le code."; }
+/* ---------- Scanner (moteur ZXing-C++ en WebAssembly, + détecteur natif si le téléphone en a un) ---------- */
+let scanCb=null, flux=null, boucle=null, natif=null, enLecture=false, dernier="", vus=0, tour=0;
+const BINARISEURS=["LocalAverage","FixedThreshold","GlobalHistogram"]; // alternés : chacun lit mieux certaines images (flou, reflets, faible contraste)
+const FORMATS=["EAN-13","EAN-8","UPC-A","UPC-E","Code128"];
+const OPTS={formats:FORMATS,tryHarder:true,tryRotate:true,tryInvert:false,tryDownscale:true,maxNumberOfSymbols:1};
+const msg=(t,info)=>{ const e=document.getElementById("scan-msg"); e.textContent=t||""; e.style.color=info?"var(--gris)":""; };
+function cleValide(c){ // contrôle de la clé EAN/UPC
+  if(!/^\d+$/.test(c)) return true;
+  if(![8,12,13].includes(c.length)) return true;
+  const d=c.split("").map(Number), k=d.pop(); let s=0;
+  d.reverse().forEach((n,i)=>s+=n*(i%2===0?3:1));
+  return (10-s%10)%10===k;
 }
-async function arreterLecteur(){ if(lecteur){ const l=lecteur; lecteur=null; try{ await l.stop(); }catch(e){} try{ l.clear(); }catch(e){} } }
-async function scanFermer(){ await arreterLecteur(); fermer("m-scan"); }
-async function scanTrouve(code){ const cb=scanCb; scanCb=null; await scanFermer(); try{ navigator.vibrate&&navigator.vibrate(60); }catch(e){} if(cb&&code) cb(String(code).trim()); }
+async function initNatif(){
+  if(natif!==null) return natif;
+  natif=false;
+  try{ if("BarcodeDetector" in window){ const f=await BarcodeDetector.getSupportedFormats(); if(f.includes("ean_13")) natif=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128"].filter(x=>f.includes(x))}); } }catch(e){}
+  return natif;
+}
+if(window.ZXingWASM){ try{ ZXingWASM.prepareZXingModule({fireImmediately:true}); }catch(e){} }
+async function scanOuvrir(cb){
+  scanCb=cb; msg(""); document.getElementById("scan-main").value=""; dernier=""; vus=0;
+  ouvrir("m-scan");
+  await initNatif();
+  if(!natif&&!window.ZXingWASM){ msg("Lecteur indisponible (pas de connexion ?). Tape le code à la main."); return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ msg("Caméra indisponible. Utilise « Photo du code-barre » ou tape le code."); return; }
+  try{
+    flux=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+    const v=document.getElementById("scan-video"); v.srcObject=flux; await v.play();
+    const piste=flux.getVideoTracks()[0];
+    try{ const cap=piste.getCapabilities?piste.getCapabilities():{}; if(cap.focusMode&&cap.focusMode.includes("continuous")) await piste.applyConstraints({advanced:[{focusMode:"continuous"}]}); document.getElementById("scan-lampe").hidden=cap.torch!==true; }catch(e){}
+    msg("Vise le code-barre à 15–20 cm, bien à plat, sur la ligne rouge.",true);
+    boucle=setTimeout(analyser,300);
+  }catch(e){ arreterCamera(); msg("Caméra refusée ou indisponible. Autorise la caméra pour ce site, ou utilise « Photo du code-barre »."); }
+}
+const cv=document.createElement("canvas"), cx=cv.getContext("2d",{willReadFrequently:true});
+async function analyser(){
+  boucle=null;
+  const v=document.getElementById("scan-video");
+  if(!flux||!v.videoWidth){ if(flux) boucle=setTimeout(analyser,200); return; }
+  if(enLecture) return;
+  enLecture=true;
+  try{
+    // zone centrale (toute la largeur, la moitié de la hauteur), réduite à 1280 px de large au plus
+    const W=v.videoWidth, H=v.videoHeight, zh=Math.round(H*0.5), zy=Math.round((H-zh)/2), k=Math.min(1,1280/W);
+    cv.width=Math.round(W*k); cv.height=Math.round(zh*k);
+    cx.drawImage(v,0,zy,W,zh,0,0,cv.width,cv.height);
+    let code=null;
+    if(natif){ try{ const r=await natif.detect(cv); if(r&&r[0]) code=r[0].rawValue; }catch(e){} }
+    if(!code&&window.ZXingWASM){
+      const r=await ZXingWASM.readBarcodes(cx.getImageData(0,0,cv.width,cv.height),{...OPTS,binarizer:BINARISEURS[tour++%3]});
+      const ok=r.find(x=>x.isValid&&x.text); if(ok) code=ok.text;
+    }
+    if(code&&cleValide(code)){
+      // on attend deux lectures identiques pour éviter les erreurs
+      if(code===dernier) vus++; else { dernier=code; vus=1; }
+      if(vus>=2||code.length===13){ enLecture=false; scanTrouve(code); return; }
+    }
+  }catch(e){}
+  enLecture=false;
+  if(flux) boucle=setTimeout(analyser,120);
+}
+function arreterCamera(){
+  if(boucle){ clearTimeout(boucle); boucle=null; }
+  if(flux){ flux.getTracks().forEach(t=>{ try{t.stop();}catch(e){} }); flux=null; }
+  const v=document.getElementById("scan-video"); try{ v.pause(); v.srcObject=null; }catch(e){}
+  document.getElementById("scan-lampe").hidden=true; lampeAllumee=false;
+}
+let lampeAllumee=false;
+async function basculerLampe(){
+  if(!flux) return; lampeAllumee=!lampeAllumee;
+  try{ await flux.getVideoTracks()[0].applyConstraints({advanced:[{torch:lampeAllumee}]}); }catch(e){ lampeAllumee=false; }
+}
+async function scanFermer(){ arreterCamera(); fermer("m-scan"); }
+async function scanTrouve(code){ const cb=scanCb; scanCb=null; arreterCamera(); fermer("m-scan"); try{ navigator.vibrate&&navigator.vibrate(60); }catch(e){} if(cb&&code) cb(String(code).trim()); }
 function scanManuel(){ const v=document.getElementById("scan-main").value.trim(); if(v) scanTrouve(v); }
 document.getElementById("scan-main").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); scanManuel(); } });
 document.getElementById("scan-photo").onchange=async e=>{
   const f=e.target.files[0]; e.target.value=""; if(!f) return;
-  if(typeof Html5Qrcode==="undefined"){ toast("Lecteur indisponible (pas de connexion ?)"); return; }
-  await arreterLecteur();
-  document.getElementById("scan-msg").textContent="Lecture de la photo…";
-  try{ const h=new Html5Qrcode("lecteur-photo",{formatsToSupport:formats(),verbose:false}); const code=await h.scanFile(f,false); try{h.clear();}catch(_){} scanTrouve(code); }
-  catch(err){ document.getElementById("scan-msg").textContent="Aucun code-barre lu sur la photo. Reprends-la plus près, bien à plat et nette."; }
+  if(!window.ZXingWASM){ toast("Lecteur indisponible (pas de connexion ?)"); return; }
+  arreterCamera(); msg("Lecture de la photo…",true);
+  try{
+    let ok=null;
+    for(const bz of BINARISEURS){ const r=await ZXingWASM.readBarcodes(f,{...OPTS,binarizer:bz,maxNumberOfSymbols:4}); ok=r.find(x=>x.isValid&&x.text&&cleValide(x.text)); if(ok) break; }
+    if(ok) scanTrouve(ok.text); else msg("Aucun code-barre lu sur la photo. Reprends-la un peu plus près, nette et bien éclairée.");
+  }catch(err){ msg("Lecture de la photo impossible. Tape le code à la main."); }
 };
 
 /* ---------- Récap ---------- */
