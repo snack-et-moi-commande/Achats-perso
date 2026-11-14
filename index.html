@@ -240,7 +240,7 @@ td.r,th.r{text-align:right;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION = "v2026-11-12-9";
+const VERSION = "v2026-11-12-10";
 const CLE = "achatsPerso_v1";
 document.getElementById("ver").textContent = VERSION;
 document.getElementById("ver2").textContent = VERSION;
@@ -481,12 +481,11 @@ function rendreRecap(){
    <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center"><span>${R.achats.length} achat(s) · total TTC</span><span class="total">${eur(R.tot.ttc)}</span></div>
    <div style="margin-top:6px">${p?`<span class="paye">✔ Réglé le ${dateFr(p)}</span>`:`<span class="nonpaye">À régler au magasin</span>`}</div>
    <button class="btn" onclick="exporterRecap('${m}')">⬇︎ Exporter en Excel</button>
-   <button class="btn sec" onclick="partagerRecap('${m}')">Partager le récap</button>
+   <button class="btn sec" onclick="partagerRecap('${m}')">Partager le récap + fichier Excel</button>
    <button class="btn ${p?"dang":"sec"}" onclick="basculerPaye('${m}')">${p?"Annuler le règlement":"Marquer comme réglé"}</button>`;
 }
 function basculerPaye(m){ if(D.paiements[m]) delete D.paiements[m]; else D.paiements[m]=auj(); save(); rendreRecap(); }
-function exporterRecap(m){
-  if(typeof XLSX==="undefined"){ toast("Connexion nécessaire pour l'export Excel"); return; }
+function construireClasseur(m){
   const R=lignesRecap(m);
   const tete=["Désignation","Code-barre","Référence","Quantité","Unité","PU HT","Total HT",...R.taux.map(t=>"TVA "+pct(t)),"Total TTC"];
   const aoa=[["Récap achats personnels — "+(D.nom||"")+" — "+nomMois(m)],["Prix d'achat = prix public ÷ "+String(coef()).replace(".",",")+" + TVA"],[],tete];
@@ -501,15 +500,39 @@ function exporterRecap(m){
   R.achats.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ const a=D.articles.find(y=>y.id===x.artId); det.push([dateFr(x.date),x.nom,x.ean||(a&&a.ean)||"",x.qte,x.mode==="kg"?"g":"unité",x.pp??"",x.tva??"",x.prix,x.montant]); });
   const ws2=XLSX.utils.aoa_to_sheet(det); ws2["!cols"]=[{wch:11},{wch:38},{wch:15},{wch:9},{wch:7},{wch:11},{wch:7},{wch:14},{wch:12}];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Récap"); XLSX.utils.book_append_sheet(wb,ws2,"Détail des achats");
-  XLSX.writeFile(wb,"Achats_"+(D.nom?D.nom.replace(/\W+/g,"_")+"_":"")+m+".xlsx");
+  return {wb, nom:"Achats_"+(D.nom?D.nom.replace(/\W+/g,"_")+"_":"")+m+".xlsx"};
+}
+function exporterRecap(m){
+  if(typeof XLSX==="undefined"){ toast("Connexion nécessaire pour l'export Excel"); return; }
+  const c=construireClasseur(m); XLSX.writeFile(c.wb,c.nom);
+}
+const MIME_XLSX="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+function fichierRecap(m){
+  if(typeof XLSX==="undefined"||typeof File==="undefined") return null;
+  try{ const c=construireClasseur(m), buf=XLSX.write(c.wb,{bookType:"xlsx",type:"array"}); return new File([buf],c.nom,{type:MIME_XLSX}); }catch(e){ return null; }
 }
 function partagerRecap(m){
   const R=lignesRecap(m);
   const t="Achats personnels "+(D.nom?D.nom+" ":"")+"— "+nomMois(m)+"\n\n"+R.lignes.map(r=>r.nom+" ("+qteTxt(r)+") : HT "+nb(r.ht)+" + TVA "+pct(r.tva)+" "+nb(r.mtva)+" = "+eur(r.ttc)).join("\n")
     +"\n\nTotal HT : "+eur(R.tot.ht)+"\n"+R.taux.map(x=>"TVA "+pct(x)+" : "+eur(R.tot.tva[x])).join("\n")+"\nTOTAL TTC À RÉGLER : "+eur(R.tot.ttc);
+  const titre="Récap achats "+nomMois(m);
   const copier=()=>{ try{ navigator.clipboard.writeText(t).then(()=>toast("Récap copié"),()=>toast("Copie impossible")); }catch(e){ toast("Copie impossible"); } };
-  if(navigator.share) navigator.share({title:"Récap "+nomMois(m),text:t}).catch(e=>{ if(e&&e.name!=="AbortError") copier(); });
-  else copier();
+  const annule=e=>e&&e.name==="AbortError";
+  const f=fichierRecap(m);
+  const avecFichier=f&&navigator.canShare&&(()=>{ try{ return navigator.canShare({files:[f]}); }catch(e){ return false; } })();
+  if(avecFichier){
+    navigator.share({files:[f],title:titre,text:t})
+      .then(()=>toast("Récap partagé avec le fichier Excel"))
+      .catch(e=>{ if(annule(e)) return;
+        // certaines applis refusent texte + fichier ensemble : on réessaie avec le fichier seul
+        navigator.share({files:[f],title:titre}).then(()=>toast("Fichier Excel partagé")).catch(e2=>{ if(!annule(e2)){ toast("Partage du fichier impossible : export Excel à la place"); exporterRecap(m); } });
+      });
+    return;
+  }
+  if(navigator.share){
+    navigator.share({title:titre,text:t}).then(()=>{ if(!f) toast("Fichier Excel non joint (connexion nécessaire)"); }).catch(e=>{ if(!annule(e)) copier(); });
+    if(f) setTimeout(()=>exporterRecap(m),300);
+  } else { copier(); if(f) exporterRecap(m); }
 }
 
 /* ---------- Import export caisse ---------- */
